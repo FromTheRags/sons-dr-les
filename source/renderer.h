@@ -8,26 +8,30 @@ namespace renderer {
 bool init_video();
 void cleanup_video();
 
-SDL_Surface* get_virtual_screen();
+SDL_Window* get_window();
+SDL_Renderer* get_renderer();
 
+void clear_screen();
 void present_screen();
 void toggle_fullscreen();
-void handle_resize(int w, int h);
-SDL_Rect transform_mouse_coords(int mx, int my);
 
-// Text drawing helpers
-void draw_text(SDL_Surface* dst, TTF_Font* font, const char* str, SDL_Color color, int x, int y);
-void draw_text_centered(SDL_Surface* dst, TTF_Font* font, const char* str, SDL_Color color, int center_x, int top_y);
-void draw_button_text(SDL_Surface* dst, TTF_Font* font, const char* str, SDL_Color fg, SDL_Color bg, SDL_Rect btn_rect);
+// Drawing primitives
+void draw_texture(SDL_Texture* tex, float x, float y, float w = 0, float h = 0);
+void draw_rect_filled(const SDL_FRect& rect, SDL_Color color);
+void draw_rect_outline(const SDL_FRect& rect, SDL_Color color, float width = 1.0f);
+void draw_line(float x1, float y1, float x2, float y2, SDL_Color color);
+void draw_circle_outline(float cx, float cy, float radius, SDL_Color color, float thickness = 2.0f);
+void draw_rounded_box(const SDL_FRect& rect, float radius, SDL_Color fill_color, SDL_Color border_color, float border_width = 2.0f);
 
-// Rounded button & box drawing
-void draw_rounded_box(SDL_Surface* dst, SDL_Rect rect, int radius, SDL_Color fill_color, SDL_Color border_color, int border_width = 2);
-void draw_button_text_rounded(SDL_Surface* dst, TTF_Font* font, const char* str, SDL_Color fg, SDL_Color bg, SDL_Color border_col, SDL_Rect btn_rect, int radius = 14);
-void draw_circle_outline(SDL_Surface* dst, int cx, int cy, int radius, SDL_Color color, int thickness = 2);
+// Text & Button helpers
+void draw_text(TTF_Font* font, const char* str, SDL_Color color, float x, float y);
+void draw_text_centered(TTF_Font* font, const char* str, SDL_Color color, float center_x, float top_y);
+void draw_button_text(TTF_Font* font, const char* str, SDL_Color fg, SDL_Color bg, const SDL_FRect& btn_rect);
+void draw_button_text_rounded(TTF_Font* font, const char* str, SDL_Color fg, SDL_Color bg, SDL_Color border_col, const SDL_FRect& btn_rect, float radius = 14.0f);
 
-// Animated/styled banners
-void draw_victory_banner(SDL_Surface* dst, TTF_Font* font, int top_y);
-void draw_defeat_banner(SDL_Surface* dst, TTF_Font* font, int top_y);
+// Banners
+void draw_victory_banner(TTF_Font* font, float top_y);
+void draw_defeat_banner(TTF_Font* font, float top_y);
 
 } // namespace renderer
 

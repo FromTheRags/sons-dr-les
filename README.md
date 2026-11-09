@@ -1,6 +1,17 @@
-# Sons Drôles 🎵
+# Sons Drôles 🎵 (Branche SDL 3)
 
-Jeu de mémoire et d'acuité auditive en **SDL 1.2** et **SDL_ttf**, développé en C++17, entièrement portable (**Windows** et **Linux**), compatible avec **CLion**, Visual Studio et GCC/Clang.
+[![Build & Package](https://github.com/FromTheRags/sons-droles/actions/workflows/build.yml/badge.svg)](https://github.com/FromTheRags/sons-droles/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Language: C++17](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)](https://isocpp.org/)
+[![Library: SDL 3](https://img.shields.io/badge/Library-SDL%203-green.svg)](https://www.libsdl.org/)
+[![CMake](https://img.shields.io/badge/Build-CMake-064F8C.svg?logo=cmake&logoColor=white)](https://cmake.org/)
+
+Portage natif et moderne de **Sons Drôles** vers **SDL 3** et **SDL3_ttf** :
+- **Rendu GPU accéléré** avec présentation logique 840×680 et letterboxing automatique (`SDL_SetRenderLogicalPresentation`).
+- **Moteur audio moderne SDL 3** basé sur `SDL_AudioStream` avec mixage multi-voix et streaming temps réel.
+- **Conversion automatique des coordonnées curseur** (`SDL_ConvertEventToRenderCoordinates`).
+- **Plein écran dynamique** sans étirement (`SDL_SetWindowFullscreen`).
+- **CI/CD automatisée** avec compilation multiplateforme Ubuntu (Linux) et Windows (MinGW-w64 + Inno Setup).
 
 ---
 
@@ -24,7 +35,7 @@ Dans **Sons Drôles**, vous devez mémoriser et reconstituer des séquences de s
 7. **Progression** : Remportez les 4 premiers niveaux pour débloquer le **MODE EXTRÊME** (disposition et ordre entièrement aléatoires) !
 
 ### ⌨️ Raccourcis clavier
-- **F11** ou **Alt + Entrée** : Activer / désactiver le plein écran (sans déformation, ratio d'aspect préservé)
+- **F11** ou **Alt + Entrée** : Activer / désactiver le plein écran (ratio d'aspect préservé)
 - **Touche P** : Mettre en pause ou relancer la musique d'ambiance
 - **Échap** : Revenir au menu principal ou quitter le jeu
 
@@ -35,7 +46,8 @@ Dans **Sons Drôles**, vous devez mémoriser et reconstituer des séquences de s
 ### Prérequis Linux (Ubuntu / Debian)
 ```bash
 sudo apt-get update
-sudo apt-get install -y libsdl1.2-dev libsdl-ttf2.0-dev cmake ninja-build g++
+sudo apt-get install -y cmake ninja-build g++ pkg-config
+# SDL 3 et SDL3_ttf peuvent être installés via paquets système ou téléchargés automatiquement via FetchContent dans CMake
 ```
 
 ### Compilation (Linux & macOS)
@@ -46,10 +58,10 @@ cmake --build build --config Release
 ```
 
 ### Compilation sous Windows (CLion / MinGW / Visual Studio)
-Le projet intègre automatiquement dans `cmake/sdl12/` les en-têtes et bibliothèques précompilées (32 et 64 bits) de SDL 1.2 et SDL_ttf :
+Le projet intègre automatiquement dans `cmake/sdl3/` les bibliothèques officielles de **SDL 3** et **SDL3_ttf** :
 1. Ouvrez le dossier du projet dans **CLion** ou chargez le fichier `CMakeLists.txt`.
 2. Configurez le profil de compilation (Release ou Debug).
-3. Lancez la cible `sons-droles`. Les bibliothèques dynamiques (DLL) et les ressources (`assets/`) sont automatiquement copiées dans le répertoire de sortie de l'exécutable lors de la phase post-build.
+3. Lancez la cible `sons-droles`. Les bibliothèques dynamiques (`SDL3.dll`, `SDL3_ttf.dll`) et les ressources (`assets/`) sont automatiquement copiées dans le répertoire de sortie de l'exécutable lors de la phase post-build.
 
 ---
 
@@ -57,34 +69,33 @@ Le projet intègre automatiquement dans `cmake/sdl12/` les en-têtes et biblioth
 
 ```
 .
-├── .github/workflows/          # CI/CD GitHub Actions (Linux & Windows)
+├── .github/workflows/          # CI/CD GitHub Actions pour SDL 3 (Linux & Windows)
+├── Demo/                       # Captures d'écran du jeu
 ├── assets/                     # Ressources du jeu libres de droits
 │   ├── fonts/                  # Polices sous licence SIL Open Font License (OFL)
 │   ├── images/                 # Arrière-plans et cases du jeu au format BMP
 │   └── sounds/                 # Sons et musiques générés au format WAV (CC0/MIT)
 ├── cmake/
-│   ├── sdl12/                  # Bibliothèques SDL 1.2 et SDL_ttf pour Windows
+│   ├── sdl3/                   # Bibliothèques officielles SDL 3 et SDL3_ttf (Windows)
 │   └── CopyRuntimeDependencies.cmake
 ├── innosetup/                  # Script d'installation Inno Setup pour Windows
-├── source/                     # Code source C++ réorganisé et modulaire
-│   ├── common.h                # Types communs, configurations de plateformes
-│   ├── assets.h / assets.cpp   # Gestionnaire et cache des ressources
-│   ├── audio.h / audio.cpp     # Moteur audio SDL 1.2 natif (mixage WAV)
-│   ├── renderer.h / .cpp       # Rendu graphique, fenêtrage, mise à l'échelle
-│   ├── game.h / game.cpp       # Logique des niveaux, règles et progression
-│   └── main.cpp                # Point d'entrée et boucle d'événements
+├── source/                     # Code source C++17 moderne pour SDL 3
+│   ├── assets.h / .cpp         # Gestionnaire de ressources et textures GPU
+│   ├── audio.h / .cpp          # Moteur audio moderne SDL_AudioStream
+│   ├── common.h                # Types globaux, constantes et en-têtes SDL 3
+│   ├── game.h / .cpp           # Logique du jeu, règles, niveaux et timers
+│   ├── renderer.h / .cpp       # Rendu accéléré GPU, formes géométriques et textes
+│   └── main.cpp                # Boucle principale SDL 3 et boucle d'événements
 ├── tools/
-│   └── generate_assets.py      # Générateur autonome de sons et d'images
-├── CMakeLists.txt              # Configuration CMake moderne
-├── LICENSE                     # Licence MIT du projet
-├── OFL.txt                     # Licence Open Font License
-└── README.md
+│   └── generate_assets.py      # Script Python générateur d'assets (sons & images)
+├── CMakeLists.txt              # Configuration CMake moderne multiplateforme SDL 3
+├── LICENSE                     # Licence MIT
+└── README.md                   # Documentation du projet
 ```
 
 ---
 
-## 📜 Licences & Droits d'auteur
-
-- **Code source** : Sous licence **GPL3**.
-- **Ressources sonores & graphiques** : 100% libres de droits, créées spécifiquement pour le projet et reproductibles via `tools/generate_assets.py`.
-- **Polices typographiques** : Sous licence **SIL Open Font License 1.1** (Graduate & Patrick Hand par Google Fonts, DejaVu Sans).
+## 📜 Licences
+- **Code source** : Open-source sous licence [MIT](LICENSE).
+- **Polices** : Sous licence [SIL Open Font License 1.1](OFL.txt).
+- **Graphismes et Sons** : Originaux et libres de droits.

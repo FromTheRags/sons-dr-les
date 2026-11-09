@@ -18,16 +18,16 @@ void start_level(int level);
 void update(Uint32 delta_ms);
 
 // Game rendering
-void render_menu(SDL_Surface* dst);
-void render_rules(SDL_Surface* dst);
-void render_game(SDL_Surface* dst);
-void render_round_over(SDL_Surface* dst);
+void render_menu();
+void render_rules();
+void render_game();
+void render_round_over();
 
 // Handle clicks
-void handle_menu_click(int mx, int my);
-void handle_rules_click(int mx, int my);
-void handle_game_click(int mx, int my);
-void handle_round_over_click(int mx, int my);
+void handle_menu_click(float mx, float my);
+void handle_rules_click(float mx, float my);
+void handle_game_click(float mx, float my);
+void handle_round_over_click(float mx, float my);
 
 // Replay sequence listener
 void play_target_sequence();

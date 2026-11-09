@@ -14,13 +14,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install SDL 1.2 & SDL_ttf dependencies
+      - name: Setup SDL3 & SDL3_ttf
+        uses: libsdl-org/setup-sdl@main
+        id: sdl
+        with:
+          version: 3-latest
+          version-sdl-ttf: 3-latest
+          install-linux-dependencies: true
+
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl1.2-dev libsdl-ttf2.0-dev cmake ninja-build
+          sudo apt-get install -y cmake ninja-build
 
       - name: Configure CMake
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="${{ steps.sdl.outputs.prefix }}"
 
       - name: Build project
         run: cmake --build build --config Release
@@ -30,8 +38,7 @@ jobs:
           mkdir -p dist/sons-droles-linux
           cp build/sons-droles dist/sons-droles-linux/
           cp -r assets dist/sons-droles-linux/
-          cp assets/*.bmp assets/*.ttf dist/sons-droles-linux/ || true
-          cp LICENSE OFL.txt README.md dist/sons-droles-linux/ || true
+          cp LICENSE OFL.txt README.md dist/sons-droles-linux/
           cd dist && tar -czvf ../sons-droles-linux-x86_64.tar.gz sons-droles-linux
 
       - name: Upload Linux Build Artifact
@@ -56,8 +63,8 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-SDL
-            mingw-w64-x86_64-SDL_ttf
+            mingw-w64-x86_64-sdl3
+            mingw-w64-x86_64-sdl3-ttf
 
       - name: Configure CMake
         shell: msys2 {0}
@@ -73,8 +80,7 @@ jobs:
           mkdir -p dist/sons-droles-windows
           cp build/sons-droles.exe dist/sons-droles-windows/
           cp -r assets dist/sons-droles-windows/
-          cp assets/*.bmp assets/*.ttf dist/sons-droles-windows/ || true
-          cp LICENSE OFL.txt README.md dist/sons-droles-windows/ || true
+          cp LICENSE OFL.txt README.md dist/sons-droles-windows/
           cmake -DEXECUTABLE="$PWD/build/sons-droles.exe" -DDESTINATION="$PWD/dist/sons-droles-windows" -DMINGW_BIN_DIR=/mingw64/bin -P cmake/CopyRuntimeDependencies.cmake
           cd dist && cmake -E tar cf ../sons-droles-windows-x64.zip --format=zip sons-droles-windows
 

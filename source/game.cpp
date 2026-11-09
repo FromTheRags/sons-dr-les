@@ -2,55 +2,60 @@
 #include "assets.h"
 #include "audio.h"
 #include "renderer.h"
-#include <algorithm>
 #include <cstdio>
-#include <random>
+#include <cstdlib>
+#include <algorithm>
+#include <cmath>
 
 namespace game {
 
 static GameState g_state = STATE_MENU;
 static int g_current_level = 1;
+static bool g_level_cleared[4] = { false, false, false, false };
 
-// Progression: cleared[0..3] corresponds to levels 1..4
-static int g_levels_cleared[4] = {0, 0, 0, 0};
+// Sequence playback state
+static bool g_playing_sequence = false;
+static int g_sequence_index = 0;
+static Uint32 g_sequence_timer_ms = 0;
+const Uint32 SEQUENCE_INTERVAL_MS = 600;
 
-// Round state
-static int g_target_sequence[8];     // Sounds 1..8 in target playback order
-static int g_case_to_sound[8];       // Sound (1..8) associated with each tile (0..7)
-static int g_selected_cases[8];      // Ordered tiles clicked by the player
-static int g_selected_sounds[8];     // Corresponding sound for each click
-static int g_click_count = 0;        // Number of tiles currently chosen (0..8)
+// Game round data
+static int g_case_to_sound[8];
+static int g_target_sequence[8];
+static int g_selected_cases[8];
+static int g_selected_sounds[8];
+static int g_click_count = 0;
 
-static int g_replays_left = 2;       // 2 replay listens allowed per round
-static int g_attempts_left = 5;      // 5 complete combination attempts allowed before defeat
-static int g_time_left_sec = 120;    // 2 minutes countdown
-static Uint32 g_last_tick = 0;
+static int g_replays_left = 2;
+static int g_attempts_left = 5;
+static int g_time_left_sec = 120;
 static Uint32 g_timer_accum_ms = 0;
 
+// Round over state
 static bool g_round_victory = false;
 static bool g_round_defeat = false;
-
-// Feedback banner timer when a combination fails
 static Uint32 g_feedback_timer_ms = 0;
 
-// Sequence playback state at beginning of level or upon replay
-static bool g_playing_sequence = false;
-static int g_seq_playback_step = 0;
-static Uint32 g_seq_step_timer = 0;
-static const Uint32 SEQ_INTERVAL_MS = 600;
+GameState get_state() { return g_state; }
+void set_state(GameState state) { g_state = state; }
+int get_current_level() { return g_current_level; }
+int get_replays_left() { return g_replays_left; }
+int get_attempts_left() { return g_attempts_left; }
 
 void load_progression() {
     std::string path = assets::get_asset_path("data/log.data");
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) {
-        path = assets::get_asset_path("log.data");
-        f = fopen(path.c_str(), "r");
-    }
+    if (path.empty()) path = "data/log.data";
 
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        f = fopen("log.data", "rb");
+    }
     if (f) {
-        if (fscanf(f, " %d %d %d %d", &g_levels_cleared[0], &g_levels_cleared[1],
-                   &g_levels_cleared[2], &g_levels_cleared[3]) != 4) {
-            g_levels_cleared[0] = g_levels_cleared[1] = g_levels_cleared[2] = g_levels_cleared[3] = 0;
+        int val = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (fscanf(f, "%d", &val) == 1) {
+                g_level_cleared[i] = (val == 1);
+            }
         }
         fclose(f);
     }
@@ -58,123 +63,92 @@ void load_progression() {
 
 void save_progression() {
     std::string path = "data/log.data";
-    FILE* f = fopen(path.c_str(), "w");
+    FILE* f = fopen(path.c_str(), "wb");
     if (!f) {
-        path = "log.data";
-        f = fopen(path.c_str(), "w");
+        f = fopen("log.data", "wb");
     }
-
     if (f) {
-        fprintf(f, " %d %d %d %d\n", g_levels_cleared[0], g_levels_cleared[1],
-                g_levels_cleared[2], g_levels_cleared[3]);
+        for (int i = 0; i < 4; ++i) {
+            fprintf(f, "%d\n", g_level_cleared[i] ? 1 : 0);
+        }
         fclose(f);
     }
 }
 
 bool is_extreme_unlocked() {
-    return g_levels_cleared[0] == 1 && g_levels_cleared[1] == 1 &&
-           g_levels_cleared[2] == 1 && g_levels_cleared[3] == 1;
+    return g_level_cleared[0] && g_level_cleared[1] && g_level_cleared[2] && g_level_cleared[3];
 }
 
 bool is_level_cleared(int level) {
-    if (level >= 1 && level <= 4) {
-        return g_levels_cleared[level - 1] == 1;
-    }
-    return false;
+    if (level < 1 || level > 4) return false;
+    return g_level_cleared[level - 1];
 }
 
-GameState get_state() {
-    return g_state;
-}
-
-void set_state(GameState state) {
-    g_state = state;
-}
-
-int get_current_level() {
-    return g_current_level;
-}
-
-int get_replays_left() {
-    return g_replays_left;
-}
-
-int get_attempts_left() {
-    return g_attempts_left;
+void play_target_sequence() {
+    g_playing_sequence = true;
+    g_sequence_index = 0;
+    g_sequence_timer_ms = 0;
 }
 
 void start_level(int level) {
     g_current_level = level;
     g_click_count = 0;
-    g_replays_left = 2;       // 2 replays allowed
-    g_attempts_left = 5;      // 5 complete combination attempts
+    g_replays_left = 2;
+    g_attempts_left = 5;
     g_time_left_sec = 120;
     g_timer_accum_ms = 0;
-    g_last_tick = SDL_GetTicks();
     g_round_victory = false;
     g_round_defeat = false;
     g_feedback_timer_ms = 0;
 
     for (int i = 0; i < 8; ++i) {
         g_selected_cases[i] = -1;
-        g_selected_sounds[i] = 0;
+        g_selected_sounds[i] = -1;
     }
 
-    // Stop background music as requested: concentration on game sounds!
+    if (level >= 1 && level <= 4) {
+        for (int i = 0; i < 8; ++i) {
+            g_case_to_sound[i] = i + 1;
+        }
+
+        std::vector<int> pool;
+        for (int s = 1; s <= 8; ++s) {
+            pool.push_back(s);
+        }
+        for (int i = 0; i < 8; ++i) {
+            int r_idx = rand() % pool.size();
+            g_target_sequence[i] = pool[r_idx];
+            pool.erase(pool.begin() + r_idx);
+        }
+    } else if (level == 5) {
+        std::vector<int> theme_pool;
+        for (int s = 1; s <= 8; ++s) {
+            theme_pool.push_back(s);
+        }
+        for (int i = 0; i < 8; ++i) {
+            int r_idx = rand() % theme_pool.size();
+            g_case_to_sound[i] = theme_pool[r_idx];
+            theme_pool.erase(theme_pool.begin() + r_idx);
+        }
+
+        std::vector<int> seq_pool;
+        for (int s = 1; s <= 8; ++s) {
+            seq_pool.push_back(s);
+        }
+        for (int i = 0; i < 8; ++i) {
+            int r_idx = rand() % seq_pool.size();
+            g_target_sequence[i] = seq_pool[r_idx];
+            seq_pool.erase(seq_pool.begin() + r_idx);
+        }
+    }
+
     audio::stop_music();
-
-    // 1. Configure target sequence
-    if (level == 1 || level == 2) {
-        // Standard ordered sequence 1..8
-        for (int i = 0; i < 8; ++i) {
-            g_target_sequence[i] = i + 1;
-        }
-    } else {
-        // Levels 3, 4, 5: Random permutation of 1..8
-        std::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8};
-        std::mt19937 rng((unsigned int)time(NULL) + level * 100);
-        std::shuffle(nums.begin(), nums.end(), rng);
-        for (int i = 0; i < 8; ++i) {
-            g_target_sequence[i] = nums[i];
-        }
-    }
-
-    // 2. Configure tile-to-sound mapping
-    if (level == 1) {
-        const int map1[8] = {3, 7, 5, 1, 8, 2, 4, 6};
-        for (int i = 0; i < 8; ++i) g_case_to_sound[i] = map1[i];
-    } else if (level == 2) {
-        const int map2[8] = {4, 8, 3, 1, 5, 2, 6, 7};
-        for (int i = 0; i < 8; ++i) g_case_to_sound[i] = map2[i];
-    } else if (level == 3) {
-        const int map3[8] = {7, 2, 1, 5, 4, 6, 3, 8};
-        for (int i = 0; i < 8; ++i) g_case_to_sound[i] = map3[i];
-    } else if (level == 4) {
-        const int map4[8] = {5, 6, 8, 3, 4, 2, 7, 1};
-        for (int i = 0; i < 8; ++i) g_case_to_sound[i] = map4[i];
-    } else {
-        // Extreme mode: completely randomized tile mapping
-        std::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8};
-        std::mt19937 rng((unsigned int)time(NULL) + 9999);
-        std::shuffle(nums.begin(), nums.end(), rng);
-        for (int i = 0; i < 8; ++i) g_case_to_sound[i] = nums[i];
-    }
-
-    // Launch initial sequence preview
-    play_target_sequence();
     g_state = STATE_PLAYING;
-}
-
-void play_target_sequence() {
-    audio::stop_all_sfx();
-    g_playing_sequence = true;
-    g_seq_playback_step = 0;
-    g_seq_step_timer = SDL_GetTicks();
+    play_target_sequence();
 }
 
 void update(Uint32 delta_ms) {
     if (g_state == STATE_PLAYING) {
-        // Update feedback banner timer
         if (g_feedback_timer_ms > 0) {
             if (delta_ms >= g_feedback_timer_ms) {
                 g_feedback_timer_ms = 0;
@@ -183,15 +157,15 @@ void update(Uint32 delta_ms) {
             }
         }
 
-        // 1. Manage target sequence playback
         if (g_playing_sequence) {
-            Uint32 now = SDL_GetTicks();
-            if (now - g_seq_step_timer >= SEQ_INTERVAL_MS) {
-                if (g_seq_playback_step < 8) {
-                    int sound_id = g_target_sequence[g_seq_playback_step];
-                    audio::play_game_sound(g_current_level, sound_id);
-                    g_seq_playback_step++;
-                    g_seq_step_timer = now;
+            g_sequence_timer_ms += delta_ms;
+            if (g_sequence_timer_ms >= SEQUENCE_INTERVAL_MS) {
+                g_sequence_timer_ms -= SEQUENCE_INTERVAL_MS;
+                if (g_sequence_index < 8) {
+                    int sound_id = g_target_sequence[g_sequence_index];
+                    int snd_lvl = (g_current_level == 5) ? 4 : g_current_level;
+                    audio::play_game_sound(snd_lvl, sound_id);
+                    g_sequence_index++;
                 } else {
                     g_playing_sequence = false;
                 }
@@ -199,14 +173,12 @@ void update(Uint32 delta_ms) {
             return;
         }
 
-        // 2. Countdown timer (120s)
         g_timer_accum_ms += delta_ms;
         while (g_timer_accum_ms >= 1000) {
             g_timer_accum_ms -= 1000;
             if (g_time_left_sec > 0) {
                 g_time_left_sec--;
                 if (g_time_left_sec == 0) {
-                    // Time out: defeat!
                     g_round_defeat = true;
                     g_state = STATE_ROUND_OVER;
                 }
@@ -215,330 +187,259 @@ void update(Uint32 delta_ms) {
     }
 }
 
-void render_menu(SDL_Surface* dst) {
-    SDL_Surface* bg = assets::get_image("menu_background.bmp");
+void render_menu() {
+    SDL_Texture* bg = assets::get_texture("menu_background.bmp");
     if (bg) {
-        SDL_BlitSurface(bg, NULL, dst, NULL);
+        renderer::draw_texture(bg, 0, 0, (float)VIRTUAL_W, (float)VIRTUAL_H);
     }
 
-    // Dynamic music pulsation effect (animated in real-time at 110 BPM)
-    Uint32 ticks = SDL_GetTicks();
-    float beat = (sinf(ticks * 0.0115f) + 1.0f) * 0.5f; // 0.0 to 1.0
+    Uint64 ticks = SDL_GetTicks();
+    float beat = (sinf((float)ticks * 0.0115f) + 1.0f) * 0.5f;
 
-    // Pulsing acoustic soundwaves expanding from center (420, 355)
-    int cx = VIRTUAL_W / 2;
-    int cy = 355;
-    int r1 = 80 + (int)(16.0f * beat);
-    int r2 = 175 + (int)(26.0f * beat);
-    int r3 = 285 + (int)(36.0f * beat);
-    int r4 = 405 + (int)(46.0f * beat);
+    // Pulsing acoustic soundwaves
+    float cx = (float)VIRTUAL_W / 2.0f;
+    float cy = 355.0f;
+    float r1 = 80.0f + 16.0f * beat;
+    float r2 = 175.0f + 26.0f * beat;
+    float r3 = 285.0f + 36.0f * beat;
+    float r4 = 405.0f + 46.0f * beat;
 
     SDL_Color pulse_col1 = {255, 60, 120, 255};
     SDL_Color pulse_col2 = {0, 210, 255, 255};
     SDL_Color pulse_col3 = {255, 215, 0, 255};
     SDL_Color pulse_col4 = {180, 50, 220, 255};
 
-    renderer::draw_circle_outline(dst, cx, cy, r1, pulse_col1, 2);
-    renderer::draw_circle_outline(dst, cx, cy, r2, pulse_col2, 2);
-    renderer::draw_circle_outline(dst, cx, cy, r3, pulse_col3, 2);
-    renderer::draw_circle_outline(dst, cx, cy, r4, pulse_col4, 1);
+    renderer::draw_circle_outline(cx, cy, r1, pulse_col1, 2.0f);
+    renderer::draw_circle_outline(cx, cy, r2, pulse_col2, 2.0f);
+    renderer::draw_circle_outline(cx, cy, r3, pulse_col3, 2.0f);
+    renderer::draw_circle_outline(cx, cy, r4, pulse_col4, 1.0f);
 
     // Pulsing audio equalizer spectrum visualizer along bottom
     for (int b = 0; b < 24; ++b) {
-        float phase = b * 0.38f;
-        int bar_h = (int)(4.0f + 16.0f * fabsf(sinf(ticks * 0.010f + phase)));
-        SDL_Rect bar = { (Sint16)(120 + b * 25), (Sint16)(668 - bar_h), 14, (Uint16)bar_h };
+        float phase = (float)b * 0.38f;
+        float bar_h = 4.0f + 16.0f * fabsf(sinf((float)ticks * 0.010f + phase));
+        SDL_FRect bar = { 120.0f + (float)b * 25.0f, 668.0f - bar_h, 14.0f, bar_h };
         SDL_Color bar_col = (b % 3 == 0) ? colors::AppleGreen : ((b % 3 == 1) ? colors::Yellow : colors::Pink);
-        SDL_FillRect(dst, &bar, SDL_MapRGB(dst->format, bar_col.r, bar_col.g, bar_col.b));
+        renderer::draw_rect_filled(bar, bar_col);
     }
 
     TTF_Font* f_badge = assets::get_font("Graduate-Regular.ttf", 22);
 
-    // Rounded Badges for completed levels
-    const SDL_Rect badge_pos[4] = {
-        {220, 114, 160, 36},
-        {635, 114, 160, 36},
-        {220, 389, 160, 36},
-        {635, 389, 160, 36}
+    const SDL_FRect badge_pos[4] = {
+        {220.0f, 114.0f, 160.0f, 36.0f},
+        {635.0f, 114.0f, 160.0f, 36.0f},
+        {220.0f, 389.0f, 160.0f, 36.0f},
+        {635.0f, 389.0f, 160.0f, 36.0f}
     };
 
     for (int lvl = 1; lvl <= 4; ++lvl) {
         if (is_level_cleared(lvl)) {
-            renderer::draw_button_text_rounded(dst, f_badge, " GAGNÉ ! ", colors::Black, colors::Gold, colors::White, badge_pos[lvl - 1], 16);
+            renderer::draw_button_text_rounded(f_badge, " GAGNÉ ! ", colors::Black, colors::Gold, colors::White, badge_pos[lvl - 1], 16.0f);
         }
     }
 
-    // Mode Extreme button if unlocked
     if (is_extreme_unlocked()) {
-        SDL_Surface* btn_ext = assets::get_image("mode_extreme.bmp");
+        SDL_Texture* btn_ext = assets::get_texture("mode_extreme.bmp");
         if (btn_ext) {
-            SDL_Rect r_ext = {272, 275, (Uint16)btn_ext->w, (Uint16)btn_ext->h};
-            SDL_BlitSurface(btn_ext, NULL, dst, &r_ext);
+            renderer::draw_texture(btn_ext, 272.0f, 275.0f);
         }
     }
 
-    // Help/Rules icon button at bottom right (733, 574)
-    SDL_Surface* btn_help = assets::get_image("aide_icon.bmp");
+    SDL_Texture* btn_help = assets::get_texture("aide_icon.bmp");
     if (btn_help) {
-        SDL_Rect r_help = {733, 574, (Uint16)btn_help->w, (Uint16)btn_help->h};
-        SDL_BlitSurface(btn_help, NULL, dst, &r_help);
+        renderer::draw_texture(btn_help, 733.0f, 574.0f);
     }
 }
 
-void render_rules(SDL_Surface* dst) {
-    SDL_Surface* bg = assets::get_image("rules_background.bmp");
+void render_rules() {
+    SDL_Texture* bg = assets::get_texture("rules_background.bmp");
     if (bg) {
-        SDL_BlitSurface(bg, NULL, dst, NULL);
+        renderer::draw_texture(bg, 0, 0, (float)VIRTUAL_W, (float)VIRTUAL_H);
     }
 
-    // Return button at top left (10, 10)
-    SDL_Surface* b_ret = assets::get_image("btn_retour.bmp");
+    SDL_Texture* b_ret = assets::get_texture("btn_retour.bmp");
     if (b_ret) {
-        SDL_Rect r_ret = {10, 10, (Uint16)b_ret->w, (Uint16)b_ret->h};
-        SDL_BlitSurface(b_ret, NULL, dst, &r_ret);
+        renderer::draw_texture(b_ret, 10.0f, 10.0f);
     }
 }
 
-void render_game(SDL_Surface* dst) {
-    // Fill background with dark navy
-    SDL_FillRect(dst, NULL, SDL_MapRGB(dst->format, 20, 24, 34));
+void render_game() {
+    renderer::draw_rect_filled({0, 0, (float)VIRTUAL_W, (float)VIRTUAL_H}, {20, 24, 38, 255});
 
-    // Tile dimensions: 4 columns x 2 rows
-    // Col widths: 210 each. Row heights: 340 each.
-    TTF_Font* font_num = assets::get_font("Graduate-Regular.ttf", 68);
+    SDL_Texture* img_inter = assets::get_texture("case_interrogation.bmp");
+    TTF_Font* font_num = assets::get_font("Graduate-Regular.ttf", 64);
 
-    for (int t = 0; t < 8; ++t) {
-        int col = t % 4;
-        int row = t / 4;
-        int tx = col * 210;
-        int ty = row * 340;
+    for (int i = 0; i < 8; ++i) {
+        float tx = (float)((i % 4) * 210);
+        float ty = (float)((i / 4) * 340);
 
-        // Check if tile t is selected by the player
         int order_index = -1;
         for (int k = 0; k < g_click_count; ++k) {
-            if (g_selected_cases[k] == t) {
+            if (g_selected_cases[k] == i) {
                 order_index = k + 1;
                 break;
             }
         }
 
-        SDL_Rect dst_rect = { (Sint16)tx, (Sint16)ty, 209, 339 };
-
         if (order_index == -1) {
-            // Unrevealed tile
-            SDL_Surface* surf = assets::get_image("case_interrogation.bmp");
-            if (surf) {
-                SDL_BlitSurface(surf, NULL, dst, &dst_rect);
+            if (img_inter) {
+                renderer::draw_texture(img_inter, tx, ty, 210.0f, 340.0f);
             }
         } else {
-            // Revealed tile
-            char name[64];
-            snprintf(name, sizeof(name), "case_sound_%d.bmp", t + 1);
-            SDL_Surface* surf = assets::get_image(name);
-            if (surf) {
-                SDL_BlitSurface(surf, NULL, dst, &dst_rect);
+            int sound_id = g_case_to_sound[i];
+            char cname[64];
+            snprintf(cname, sizeof(cname), "case_sound_%d.bmp", sound_id);
+            SDL_Texture* c_img = assets::get_texture(cname);
+            if (c_img) {
+                renderer::draw_texture(c_img, tx, ty, 210.0f, 340.0f);
             }
 
-            // Draw player's click order number (1..8)
             char num_str[16];
             snprintf(num_str, sizeof(num_str), "%d", order_index);
-            renderer::draw_text_centered(dst, font_num, num_str, colors::Gold, tx + 105, ty + 240);
+            renderer::draw_text_centered(font_num, num_str, colors::Gold, tx + 105.0f, ty + 240.0f);
         }
     }
 
-    // Grid divider lines
-    SDL_Rect vline1 = {210, 0, 1, 680};
-    SDL_Rect vline2 = {420, 0, 1, 680};
-    SDL_Rect vline3 = {630, 0, 1, 680};
-    SDL_Rect hline  = {0, 340, 840, 1};
+    // Grid dividers
+    renderer::draw_line(210.0f, 0, 210.0f, 680.0f, {50, 65, 90, 255});
+    renderer::draw_line(420.0f, 0, 420.0f, 680.0f, {50, 65, 90, 255});
+    renderer::draw_line(630.0f, 0, 630.0f, 680.0f, {50, 65, 90, 255});
+    renderer::draw_line(0, 340.0f, 840.0f, 340.0f, {50, 65, 90, 255});
 
-    SDL_FillRect(dst, &vline1, SDL_MapRGB(dst->format, 50, 65, 90));
-    SDL_FillRect(dst, &vline2, SDL_MapRGB(dst->format, 50, 65, 90));
-    SDL_FillRect(dst, &vline3, SDL_MapRGB(dst->format, 50, 65, 90));
-    SDL_FillRect(dst, &hline,  SDL_MapRGB(dst->format, 50, 65, 90));
-
-    // Return button at top left (0, 0, 60, 60)
-    SDL_Surface* b_ret = assets::get_image("btn_retour.bmp");
+    // Top buttons
+    SDL_Texture* b_ret = assets::get_texture("btn_retour.bmp");
     if (b_ret) {
-        SDL_Rect r_ret = {0, 0, (Uint16)b_ret->w, (Uint16)b_ret->h};
-        SDL_BlitSurface(b_ret, NULL, dst, &r_ret);
+        renderer::draw_texture(b_ret, 0, 0);
     }
 
-    // Replay button at top right (765, 0) with badge indicating remaining replays
     TTF_Font* f_badge_mini = assets::get_font("Graduate-Regular.ttf", 20);
     if (g_replays_left > 0) {
-        SDL_Surface* b_rep = assets::get_image("btn_replay.bmp");
+        SDL_Texture* b_rep = assets::get_texture("btn_replay.bmp");
         if (b_rep) {
-            SDL_Rect r_rep = {765, 0, (Uint16)b_rep->w, (Uint16)b_rep->h};
-            SDL_BlitSurface(b_rep, NULL, dst, &r_rep);
+            renderer::draw_texture(b_rep, 765.0f, 0);
         }
-        // Badge text showing replays left (e.g., "x2" or "x1")
         char rep_str[16];
         snprintf(rep_str, sizeof(rep_str), "x%d", g_replays_left);
-        SDL_Rect r_rep_badge = {720, 12, 42, 32};
-        renderer::draw_button_text(dst, f_badge_mini, rep_str, colors::Black, colors::Green, r_rep_badge);
+        renderer::draw_button_text(f_badge_mini, rep_str, colors::Black, colors::Green, {720.0f, 12.0f, 42.0f, 32.0f});
     } else {
-        SDL_Surface* b_crx = assets::get_image("croix.bmp");
+        SDL_Texture* b_crx = assets::get_texture("croix.bmp");
         if (b_crx) {
-            SDL_Rect r_crx = {765, 0, (Uint16)b_crx->w, (Uint16)b_crx->h};
-            SDL_BlitSurface(b_crx, NULL, dst, &r_crx);
+            renderer::draw_texture(b_crx, 765.0f, 0);
         }
-        SDL_Rect r_rep_badge = {720, 12, 42, 32};
-        renderer::draw_button_text(dst, f_badge_mini, "x0", colors::White, colors::Red, r_rep_badge);
+        renderer::draw_button_text(f_badge_mini, "x0", colors::White, colors::Red, {720.0f, 12.0f, 42.0f, 32.0f});
     }
 
     // Bottom info bar overlay
     TTF_Font* f_info = assets::get_font("Graduate-Regular.ttf", 24);
 
-    // Timer display (bottom left)
     char time_str[32];
     int m = g_time_left_sec / 60;
     int s = g_time_left_sec % 60;
     snprintf(time_str, sizeof(time_str), "TEMPS: %d:%02d", m, s);
-    SDL_Rect r_time_bg = {5, 638, 205, 38};
-    SDL_FillRect(dst, &r_time_bg, SDL_MapRGB(dst->format, 15, 20, 30));
-    renderer::draw_text(dst, f_info, time_str, colors::Orange, 12, 642);
+    renderer::draw_rect_filled({5.0f, 638.0f, 205.0f, 38.0f}, {15, 20, 30, 255});
+    renderer::draw_text(f_info, time_str, colors::Orange, 12.0f, 642.0f);
 
-    // Remaining combination attempts display (bottom right: 5 combinations allowed)
     char comb_str[32];
     snprintf(comb_str, sizeof(comb_str), "ESSAIS: %d/5", g_attempts_left);
-    SDL_Rect r_comb_bg = {620, 638, 215, 38};
-    SDL_FillRect(dst, &r_comb_bg, SDL_MapRGB(dst->format, 15, 20, 30));
+    renderer::draw_rect_filled({620.0f, 638.0f, 215.0f, 38.0f}, {15, 20, 30, 255});
     SDL_Color comb_color = (g_attempts_left <= 2) ? colors::Red : colors::AppleGreen;
-    renderer::draw_text(dst, f_info, comb_str, comb_color, 632, 642);
+    renderer::draw_text(f_info, comb_str, comb_color, 632.0f, 642.0f);
 
-    // Sequence playback notification banner
     if (g_playing_sequence) {
-        SDL_Rect r_banner = {160, 280, 520, 80};
-        SDL_FillRect(dst, &r_banner, SDL_MapRGB(dst->format, 20, 30, 55));
-        SDL_Rect r_b_out = {160, 280, 520, 3};
-        SDL_FillRect(dst, &r_b_out, SDL_MapRGB(dst->format, 255, 215, 0));
+        renderer::draw_rect_filled({160.0f, 280.0f, 520.0f, 80.0f}, {20, 30, 55, 240});
+        renderer::draw_rect_filled({160.0f, 280.0f, 520.0f, 3.0f}, {255, 215, 0, 255});
         TTF_Font* f_seq = assets::get_font("Graduate-Regular.ttf", 26);
-        renderer::draw_text_centered(dst, f_seq, "ÉCOUTE DE LA SÉQUENCE CIBLE...", colors::Gold, 420, 292);
+        renderer::draw_text_centered(f_seq, "ÉCOUTE DE LA SÉQUENCE CIBLE...", colors::Gold, 420.0f, 292.0f);
         char note_str[64];
         snprintf(note_str, sizeof(note_str), "Réécoutes restantes : %d/2", g_replays_left);
         TTF_Font* f_sub = assets::get_font("PatrickHand-Regular.ttf", 22);
-        renderer::draw_text_centered(dst, f_sub, note_str, colors::White, 420, 326);
-    }
-    // Wrong combination feedback banner (visible for 2s after an incorrect 8-combination)
-    else if (g_feedback_timer_ms > 0) {
-        SDL_Rect r_err_banner = {140, 280, 560, 80};
-        SDL_FillRect(dst, &r_err_banner, SDL_MapRGB(dst->format, 60, 15, 25));
-        SDL_Rect r_err_border = {140, 280, 560, 3};
-        SDL_FillRect(dst, &r_err_border, SDL_MapRGB(dst->format, 255, 60, 80));
+        renderer::draw_text_centered(f_sub, note_str, colors::White, 420.0f, 326.0f);
+    } else if (g_feedback_timer_ms > 0) {
+        renderer::draw_rect_filled({140.0f, 280.0f, 560.0f, 80.0f}, {60, 15, 25, 240});
+        renderer::draw_rect_filled({140.0f, 280.0f, 560.0f, 3.0f}, {255, 60, 80, 255});
         TTF_Font* f_err = assets::get_font("Graduate-Regular.ttf", 26);
-        renderer::draw_text_centered(dst, f_err, "COMBINAISON INCORRECTE !", colors::Yellow, 420, 292);
+        renderer::draw_text_centered(f_err, "COMBINAISON INCORRECTE !", colors::Yellow, 420.0f, 292.0f);
         char tries_str[64];
         snprintf(tries_str, sizeof(tries_str), "Grille réinitialisée. Il vous reste %d/5 essais !", g_attempts_left);
         TTF_Font* f_sub = assets::get_font("PatrickHand-Regular.ttf", 22);
-        renderer::draw_text_centered(dst, f_sub, tries_str, colors::White, 420, 326);
+        renderer::draw_text_centered(f_sub, tries_str, colors::White, 420.0f, 326.0f);
     }
 }
 
-void render_round_over(SDL_Surface* dst) {
-    // 1. Render game board in background
-    render_game(dst);
+void render_round_over() {
+    render_game();
 
-    // 2. Dark translucent overlay box in center
-    SDL_Rect modal = {100, 70, 640, 460};
-    SDL_FillRect(dst, &modal, SDL_MapRGB(dst->format, 25, 30, 45));
+    // Dark modal overlay
+    renderer::draw_rect_filled({0, 0, (float)VIRTUAL_W, (float)VIRTUAL_H}, {0, 0, 0, 190});
+    renderer::draw_rounded_box({100.0f, 70.0f, 640.0f, 460.0f}, 24.0f, {24, 28, 48, 255}, {255, 215, 0, 255}, 4.0f);
 
-    // Outer border
-    SDL_Rect border_top = {100, 70, 640, 4};
-    SDL_Rect border_bot = {100, 526, 640, 4};
-    SDL_Rect border_lft = {100, 70, 4, 460};
-    SDL_Rect border_rgt = {736, 70, 4, 460};
-    SDL_FillRect(dst, &border_top, SDL_MapRGB(dst->format, 255, 215, 0));
-    SDL_FillRect(dst, &border_bot, SDL_MapRGB(dst->format, 255, 215, 0));
-    SDL_FillRect(dst, &border_lft, SDL_MapRGB(dst->format, 255, 215, 0));
-    SDL_FillRect(dst, &border_rgt, SDL_MapRGB(dst->format, 255, 215, 0));
-
-    // 3. Victory or Defeat Banner
     TTF_Font* f_banner = assets::get_font("Graduate-Regular.ttf", 72);
     if (g_round_victory) {
-        renderer::draw_victory_banner(dst, f_banner, 110);
+        renderer::draw_victory_banner(f_banner, 110.0f);
     } else {
-        renderer::draw_defeat_banner(dst, f_banner, 110);
+        renderer::draw_defeat_banner(f_banner, 110.0f);
     }
 
-    // 4. Prompt question
     TTF_Font* f_prompt = assets::get_font("PatrickHand-Regular.ttf", 36);
-    renderer::draw_text_centered(dst, f_prompt, "Veux-tu rejouer cette manche ?", colors::White, 420, 240);
+    renderer::draw_text_centered(f_prompt, "Veux-tu rejouer cette manche ?", colors::White, 420.0f, 240.0f);
 
-    // 5. OUI and NON rounded buttons
     TTF_Font* f_btn = assets::get_font("Graduate-Regular.ttf", 34);
-    SDL_Rect btn_oui = {200, 340, 160, 70};
-    SDL_Rect btn_non = {480, 340, 160, 70};
-
-    renderer::draw_button_text_rounded(dst, f_btn, "OUI", colors::Black, colors::Green, colors::White, btn_oui, 18);
-    renderer::draw_button_text_rounded(dst, f_btn, "NON", colors::White, colors::Red, colors::White, btn_non, 18);
+    renderer::draw_button_text_rounded(f_btn, "OUI", colors::Black, colors::Green, colors::White, {200.0f, 340.0f, 160.0f, 70.0f}, 18.0f);
+    renderer::draw_button_text_rounded(f_btn, "NON", colors::White, colors::Red, colors::White, {480.0f, 340.0f, 160.0f, 70.0f}, 18.0f);
 }
 
-void handle_menu_click(int mx, int my) {
+void handle_menu_click(float mx, float my) {
     if (mx < 0 || my < 0) return;
 
-    // Check Help icon at (733, 574)
-    if (mx >= 733 && mx <= 840 && my >= 574 && my <= 680) {
+    if (mx >= 733.0f && mx <= 840.0f && my >= 574.0f && my <= 680.0f) {
         g_state = STATE_RULES;
         return;
     }
 
-    // Check Mode Extreme at (272, 275, w=295, h=139) if unlocked
     if (is_extreme_unlocked()) {
-        if (mx >= 272 && mx <= 567 && my >= 275 && my <= 414) {
+        if (mx >= 272.0f && mx <= 567.0f && my >= 275.0f && my <= 414.0f) {
             start_level(5);
             return;
         }
     }
 
-    // Level 1: Top-left
-    if (mx >= 0 && mx <= 405 && my >= 95 && my <= 330) {
+    if (mx >= 0 && mx <= 405.0f && my >= 95.0f && my <= 330.0f) {
         start_level(1);
         return;
     }
-
-    // Level 2: Top-right
-    if (mx >= 435 && mx <= 840 && my >= 95 && my <= 330) {
+    if (mx >= 435.0f && mx <= 840.0f && my >= 95.0f && my <= 330.0f) {
         start_level(2);
         return;
     }
-
-    // Level 3: Bottom-left
-    if (mx >= 0 && mx <= 405 && my >= 370 && my <= 620) {
+    if (mx >= 0 && mx <= 405.0f && my >= 370.0f && my <= 620.0f) {
         start_level(3);
         return;
     }
-
-    // Level 4: Bottom-right
-    if (mx >= 435 && mx <= 840 && my >= 370 && my <= 620) {
+    if (mx >= 435.0f && mx <= 840.0f && my >= 370.0f && my <= 620.0f) {
         start_level(4);
         return;
     }
 }
 
-void handle_rules_click(int mx, int my) {
+void handle_rules_click(float mx, float my) {
     if (mx < 0 || my < 0) return;
-
-    // Return button at top left (0..70, 0..70)
-    if (mx >= 0 && mx <= 70 && my >= 0 && my <= 70) {
+    if (mx >= 0 && mx <= 70.0f && my >= 0 && my <= 70.0f) {
         g_state = STATE_MENU;
     }
 }
 
-void handle_game_click(int mx, int my) {
+void handle_game_click(float mx, float my) {
     if (mx < 0 || my < 0) return;
-    if (g_playing_sequence) return; // Ignore input while hearing sequence
+    if (g_playing_sequence) return;
 
-    // 1. Return button at top left (0..60, 0..60) -> Back to main menu
-    if (mx >= 0 && mx <= 60 && my >= 0 && my <= 60) {
+    if (mx >= 0 && mx <= 60.0f && my >= 0 && my <= 60.0f) {
         audio::stop_all_sfx();
-        audio::start_music(); // Resume music when returning to menu
+        audio::start_music();
         g_state = STATE_MENU;
         return;
     }
 
-    // 2. Replay button at top right (720..840, 0..60)
-    if (mx >= 720 && mx <= 840 && my >= 0 && my <= 60) {
+    if (mx >= 720.0f && mx <= 840.0f && my >= 0 && my <= 60.0f) {
         if (g_replays_left > 0) {
             g_replays_left--;
             play_target_sequence();
@@ -548,13 +449,11 @@ void handle_game_click(int mx, int my) {
         return;
     }
 
-    // 3. Grid tiles (8 tiles: 4 cols x 2 rows)
-    int col = mx / 210;
-    int row = my / 340;
+    int col = (int)(mx / 210.0f);
+    int row = (int)(my / 340.0f);
     if (col >= 0 && col < 4 && row >= 0 && row < 2) {
         int tile_index = row * 4 + col;
 
-        // Check if tile is already selected
         int found_order = -1;
         for (int i = 0; i < g_click_count; ++i) {
             if (g_selected_cases[i] == tile_index) {
@@ -564,16 +463,15 @@ void handle_game_click(int mx, int my) {
         }
 
         if (found_order == -1) {
-            // New tile selected!
             if (g_click_count < 8) {
                 g_selected_cases[g_click_count] = tile_index;
                 int sound_id = g_case_to_sound[tile_index];
                 g_selected_sounds[g_click_count] = sound_id;
                 g_click_count++;
 
-                audio::play_game_sound(g_current_level, sound_id);
+                int snd_lvl = (g_current_level == 5) ? 4 : g_current_level;
+                audio::play_game_sound(snd_lvl, sound_id);
 
-                // If all 8 tiles selected, check the combination!
                 if (g_click_count == 8) {
                     bool match = true;
                     for (int k = 0; k < 8; ++k) {
@@ -584,58 +482,51 @@ void handle_game_click(int mx, int my) {
                     }
 
                     if (match) {
-                        // VICTORY!
-                        g_round_victory = true;
                         if (g_current_level >= 1 && g_current_level <= 4) {
-                            g_levels_cleared[g_current_level - 1] = 1;
+                            g_level_cleared[g_current_level - 1] = true;
                             save_progression();
                         }
+                        g_round_victory = true;
+                        g_round_defeat = false;
                         g_state = STATE_ROUND_OVER;
                     } else {
-                        // Not matching: decrement combination attempts (up to 5 allowed)
                         g_attempts_left--;
-                        if (g_attempts_left > 0) {
-                            // Don't defeat directly! Give the player another chance
-                            audio::play_buzzer();
-                            g_feedback_timer_ms = 2200; // Display wrong combo feedback
-                            // Reset current tiles so the player can try their next series
-                            g_click_count = 0;
-                            for (int i = 0; i < 8; ++i) {
-                                g_selected_cases[i] = -1;
-                                g_selected_sounds[i] = 0;
-                            }
-                        } else {
-                            // 5 attempts exhausted: DEFEAT
+                        audio::play_buzzer();
+
+                        if (g_attempts_left <= 0) {
                             g_round_defeat = true;
+                            g_round_victory = false;
                             g_state = STATE_ROUND_OVER;
+                        } else {
+                            g_feedback_timer_ms = 2000;
+                            g_click_count = 0;
+                            for (int k = 0; k < 8; ++k) {
+                                g_selected_cases[k] = -1;
+                                g_selected_sounds[k] = -1;
+                            }
                         }
                     }
                 }
             }
         } else if (found_order == g_click_count - 1) {
-            // Player clicked on the very last selected tile -> UNDO
-            g_selected_cases[g_click_count - 1] = -1;
-            g_selected_sounds[g_click_count - 1] = 0;
-            g_click_count--;
             audio::play_undo();
-        } else {
-            // Player clicked on an already selected tile that is NOT the last -> Error buzzer
-            audio::play_buzzer();
+            g_selected_cases[g_click_count - 1] = -1;
+            g_selected_sounds[g_click_count - 1] = -1;
+            g_click_count--;
         }
     }
 }
 
-void handle_round_over_click(int mx, int my) {
+void handle_round_over_click(float mx, float my) {
     if (mx < 0 || my < 0) return;
 
-    // OUI button at (200, 340, 160, 70) -> Replay this round (music stays off)
-    if (mx >= 200 && mx <= 360 && my >= 340 && my <= 410) {
+    if (mx >= 200.0f && mx <= 360.0f && my >= 340.0f && my <= 410.0f) {
         start_level(g_current_level);
         return;
     }
 
-    // NON button at (480, 340, 160, 70) -> Back to main menu (resume background music)
-    if (mx >= 480 && mx <= 640 && my >= 340 && my <= 410) {
+    if (mx >= 480.0f && mx <= 640.0f && my >= 340.0f && my <= 410.0f) {
+        audio::stop_all_sfx();
         audio::start_music();
         g_state = STATE_MENU;
         return;

@@ -7,7 +7,7 @@
 namespace assets {
 
 std::string get_asset_path(const char* name);
-SDL_Surface* get_image(const std::string& filename);
+SDL_Texture* get_texture(const std::string& filename);
 TTF_Font* get_font(const std::string& filename, int point_size);
 void cleanup();
 

@@ -1,55 +1,31 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#if defined(_MSC_VER) && (_MSC_VER >= 1900)
-#include <cstdio>
-extern "C" {
-    FILE * __cdecl __iob_func(void)
-    {
-        return __acrt_iob_func(0);
-    }
-}
-#endif
-
-#if defined(__MINGW32__) || defined(__MINGW64__)
-#ifndef _SDL_main_h
-#define _SDL_main_h
-#endif
-#endif
-
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <cmath>
 #include <string>
 #include <vector>
 
-#if defined(__APPLE__)
-    #include <SDL/SDL.h>
-    #include <SDL/SDL_ttf.h>
-#elif defined(__linux__) || defined(__unix__)
-    #if __has_include(<SDL/SDL.h>)
-        #include <SDL/SDL.h>
-    #else
-        #include <SDL.h>
+#if defined(_WIN32)
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
     #endif
-    #if __has_include(<SDL/SDL_ttf.h>)
-        #include <SDL/SDL_ttf.h>
-    #else
-        #include <SDL_ttf.h>
+    #ifndef NOMINMAX
+        #define NOMINMAX
     #endif
+    #include <windows.h>
+#elif defined(__APPLE__)
+    #include <mach-o/dyld.h>
+    #include <unistd.h>
 #else
-    #if __has_include(<SDL/SDL.h>)
-        #include <SDL/SDL.h>
-    #else
-        #include <SDL.h>
-    #endif
-    #if __has_include(<SDL/SDL_ttf.h>)
-        #include <SDL/SDL_ttf.h>
-    #else
-        #include <SDL_ttf.h>
-    #endif
+    #include <unistd.h>
 #endif
+
+#include <SDL3/SDL.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 // Base virtual screen dimensions (matches original 2013 game layout)
 const int VIRTUAL_W = 840;
