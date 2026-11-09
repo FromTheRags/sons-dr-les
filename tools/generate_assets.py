@@ -137,10 +137,10 @@ def generate_menu_background():
     # 4 Joyful & Game-Friendly ROUNDED Cards for Levels 1, 2, 3, 4
     cards = [
         # (box, title, subtitle, bg_color, border_color, accent_color, num)
-        ((30, 105, 395, 330), "NIVEAU 1 : DÉBUTANT", "♫ Cloches & Carillons", (20, 45, 78), (0, 210, 255), (0, 235, 255), "1"),
-        ((445, 105, 810, 330), "NIVEAU 2 : NORMAL", "★ Percussions & Groove", (68, 50, 16), (255, 200, 25), (255, 225, 55), "2"),
-        ((30, 380, 395, 605), "NIVEAU 3 : DIFFICILE", "⚡ Sons Rétro & Arcade", (18, 58, 42), (20, 230, 130), (60, 255, 160), "3"),
-        ((445, 380, 810, 605), "NIVEAU 4 : EXPERT", "🔥 Bruitages & Cartoon", (68, 25, 32), (255, 90, 65), (255, 130, 95), "4"),
+        ((30, 105, 395, 325), "NIVEAU 1 : DÉBUTANT", "♫ Cloches & Carillons", (20, 45, 78), (0, 210, 255), (0, 235, 255), "1"),
+        ((445, 105, 810, 325), "NIVEAU 2 : NORMAL", "★ Percussions & Groove", (68, 50, 16), (255, 200, 25), (255, 225, 55), "2"),
+        ((30, 365, 395, 585), "NIVEAU 3 : DIFFICILE", "⚡ Sons Rétro & Arcade", (18, 58, 42), (20, 230, 130), (60, 255, 160), "3"),
+        ((445, 365, 810, 585), "NIVEAU 4 : EXPERT", "🔥 Bruitages & Cartoon", (68, 25, 32), (255, 90, 65), (255, 130, 95), "4"),
     ]
 
     card_font = get_font(23, bold=True)
@@ -166,8 +166,45 @@ def generate_menu_background():
         draw.text((x0 + 125, y0 + 145), "5 essais • 2 réécoutes", fill=(210, 230, 250), font=get_font(15, bold=True), anchor="lm")
         draw.text((x0 + 125, y0 + 172), "8 sons à mémoriser", fill=(175, 190, 215), font=get_font(14), anchor="lm")
 
-    # Bottom joyful tip bar
-    draw.text((35, 642), "👉 Clique sur un niveau pour lancer la partie ! (Chronomètre : 2 minutes)", fill=(245, 225, 255), font=get_font(16, bold=True))
+    # Bottom joyful tip bar (comfortably placed above the animated equalizer)
+    draw.text((35, 615), "👉 Clique sur un niveau pour lancer la partie ! (Chronomètre : 2 minutes)", fill=(245, 225, 255), font=get_font(16, bold=True))
+
+    # Soft, ambiently blended circular Rules / Help badge at bottom-right
+    cx_help, cy_help = 776, 626
+    r_help = 36
+
+    ov_help = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d_ov = ImageDraw.Draw(ov_help)
+
+    # 1. Soft glowing outer halos for seamless ambient diffusion
+    glow_layers = [
+        (r_help + 8, (140, 50, 160, 25)),
+        (r_help + 5, (160, 60, 180, 50)),
+        (r_help + 2, (180, 80, 205, 85)),
+    ]
+    for r_g, col_g in glow_layers:
+        d_ov.ellipse([cx_help - r_g, cy_help - r_g, cx_help + r_g, cy_help + r_g], fill=col_g)
+
+    # 2. Main rounded circular body with warm translucent dusk-plum radial fill
+    for r_in in range(r_help, 0, -2):
+        ratio = (r_help - r_in) / float(r_help)
+        cr = int(45 + 28 * ratio)
+        cg = int(24 + 18 * ratio)
+        cb = int(68 + 36 * ratio)
+        d_ov.ellipse([cx_help - r_in, cy_help - r_in, cx_help + r_in, cy_help + r_in], fill=(cr, cg, cb, 230))
+
+    # 3. Soft rounded border rim (delicate lilac / rose-gold glow)
+    d_ov.ellipse([cx_help - r_help, cy_help - r_help, cx_help + r_help, cy_help + r_help], outline=(225, 175, 245, 230), width=2)
+    d_ov.ellipse([cx_help - r_help + 2, cy_help - r_help + 2, cx_help + r_help - 2, cy_help + r_help - 2], outline=(170, 110, 200, 120), width=1)
+
+    # 4. Icon typography: warm ivory "?" and soft lavender "RÈGLES"
+    q_font = get_font(28, bold=True)
+    reg_font = get_font(12, bold=True)
+
+    d_ov.text((cx_help, cy_help - 8), "?", fill=(255, 245, 235, 255), font=q_font, anchor="mm")
+    d_ov.text((cx_help, cy_help + 17), "RÈGLES", fill=(235, 215, 250, 255), font=reg_font, anchor="mm")
+
+    img = Image.alpha_composite(img.convert("RGBA"), ov_help).convert("RGB")
 
     save_image(img, "menu_background.bmp")
 
@@ -191,15 +228,15 @@ def generate_mode_extreme_button():
     save_image(img, "mode_extreme.bmp")
 
 def generate_aide_icon():
-    # 107x106 Help/Rules button at (733, 574) with rounded pill look
+    # 107x106 Help/Rules button at (733, 574)
+    # Exact pixel-perfect crop from menu_background so it blends with 0 artifact
     w, h = 107, 106
-    img = Image.new("RGB", (w, h), (24, 10, 30))
-    draw = ImageDraw.Draw(img)
-
-    draw.rounded_rectangle([6, 6, w - 7, h - 7], radius=26, fill=(35, 85, 140), outline=(100, 200, 255), width=3)
-    draw.text((w // 2, 42), "?", fill=(255, 255, 255), font=get_font(38, bold=True), anchor="mm")
-    draw.text((w // 2, 78), "RÈGLES", fill=(220, 240, 255), font=get_font(15, bold=True), anchor="mm")
-
+    bg_path = os.path.join(ASSETS_DIR, "menu_background.bmp")
+    if os.path.exists(bg_path):
+        bg_full = Image.open(bg_path)
+        img = bg_full.crop((733, 574, 733 + w, 574 + h)).convert("RGB")
+    else:
+        img = Image.new("RGB", (w, h), (24, 16, 48))
     save_image(img, "aide_icon.bmp")
 
 def generate_rules_screen():

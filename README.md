@@ -1,7 +1,7 @@
 # Sons Drôles 🎵 (Branche SDL 3)
 
 [![Build & Package](https://github.com/FromTheRags/sons-droles/actions/workflows/build.yml/badge.svg)](https://github.com/FromTheRags/sons-droles/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Language: C++17](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)](https://isocpp.org/)
 [![Library: SDL 3](https://img.shields.io/badge/Library-SDL%203-green.svg)](https://www.libsdl.org/)
 [![CMake](https://img.shields.io/badge/Build-CMake-064F8C.svg?logo=cmake&logoColor=white)](https://cmake.org/)
@@ -89,13 +89,13 @@ Le projet intègre automatiquement dans `cmake/sdl3/` les bibliothèques officie
 ├── tools/
 │   └── generate_assets.py      # Script Python générateur d'assets (sons & images)
 ├── CMakeLists.txt              # Configuration CMake moderne multiplateforme SDL 3
-├── LICENSE                     # Licence MIT
+├── LICENSE                     # Licence GNU GPLv3
 └── README.md                   # Documentation du projet
 ```
 
 ---
 
 ## 📜 Licences
-- **Code source** : Open-source sous licence [MIT](LICENSE).
+- **Code source** : Open-source sous licence [GNU General Public License v3.0 (GPLv3)](LICENSE), Copyright (C) 2013-2026 FromTheRags.
 - **Polices** : Sous licence [SIL Open Font License 1.1](OFL.txt).
 - **Graphismes et Sons** : Originaux et libres de droits.

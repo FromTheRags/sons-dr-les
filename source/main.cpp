@@ -42,6 +42,68 @@ int main(int argc, char* argv[]) {
     // Load saved levels progression
     game::load_progression();
 
+    // Automated screenshot generation for documentation
+    bool do_screenshot = false;
+    for (int i = 1; i < argc; ++i) {
+        if (strstr(argv[i], "screenshot")) do_screenshot = true;
+    }
+#if defined(_WIN32)
+    if (strstr(GetCommandLineA(), "screenshot")) do_screenshot = true;
+#endif
+
+    if (do_screenshot) {
+        FILE* dbg = fopen("screenshot_debug.txt", "w");
+        if (dbg) {
+            fprintf(dbg, "Entered do_screenshot!\n");
+            fclose(dbg);
+        }
+#if defined(_WIN32)
+        CreateDirectoryA("Demo", NULL);
+#endif
+        // Screenshot 1: Menu
+        game::set_state(STATE_MENU);
+        renderer::clear_screen();
+        game::render_menu();
+        SDL_Surface* s1 = SDL_RenderReadPixels(renderer::get_renderer(), NULL);
+        if (s1) {
+            SDL_SaveBMP(s1, "Demo/menu.bmp");
+            SDL_DestroySurface(s1);
+        } else {
+            FILE* f = fopen("screenshot_debug.txt", "a");
+            if (f) { fprintf(f, "s1 NULL: %s\n", SDL_GetError()); fclose(f); }
+        }
+        renderer::present_screen();
+
+        // Screenshot 2: In-Game
+        game::start_level(1);
+        renderer::clear_screen();
+        game::render_game();
+        SDL_Surface* s2 = SDL_RenderReadPixels(renderer::get_renderer(), NULL);
+        if (s2) {
+            SDL_SaveBMP(s2, "Demo/ingame.bmp");
+            SDL_DestroySurface(s2);
+        }
+        renderer::present_screen();
+
+        // Screenshot 3: Rules
+        game::set_state(STATE_RULES);
+        renderer::clear_screen();
+        game::render_rules();
+        SDL_Surface* s3 = SDL_RenderReadPixels(renderer::get_renderer(), NULL);
+        if (s3) {
+            SDL_SaveBMP(s3, "Demo/rules.bmp");
+            SDL_DestroySurface(s3);
+        }
+        renderer::present_screen();
+
+        audio::quit();
+        assets::cleanup();
+        renderer::cleanup_video();
+        TTF_Quit();
+        SDL_Quit();
+        return 0;
+    }
+
     bool running = true;
     SDL_Event event;
     Uint64 last_time = SDL_GetTicks();

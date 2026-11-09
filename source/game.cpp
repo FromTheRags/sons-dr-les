@@ -249,6 +249,13 @@ void render_menu() {
     if (btn_help) {
         renderer::draw_texture(btn_help, 733.0f, 574.0f);
     }
+
+    // Subtle ambient pulsating halo around the Help/Rules circular icon (center 776, 626)
+    float h_cx = 776.0f;
+    float h_cy = 626.0f;
+    float h_r = 38.0f + 2.5f * beat;
+    SDL_Color h_pulse_col = {220, 160, 255, (Uint8)(70 + 40 * beat)};
+    renderer::draw_circle_outline(h_cx, h_cy, h_r, h_pulse_col, 1.5f);
 }
 
 void render_rules() {
@@ -391,7 +398,10 @@ void render_round_over() {
 void handle_menu_click(float mx, float my) {
     if (mx < 0 || my < 0) return;
 
-    if (mx >= 733.0f && mx <= 840.0f && my >= 574.0f && my <= 680.0f) {
+    // Check Help/Rules circular icon at bottom right
+    float h_dx = mx - 776.0f;
+    float h_dy = my - 626.0f;
+    if ((h_dx * h_dx + h_dy * h_dy <= 45.0f * 45.0f) || (mx >= 720.0f && mx <= 840.0f && my >= 574.0f && my <= 680.0f)) {
         g_state = STATE_RULES;
         return;
     }
@@ -411,11 +421,11 @@ void handle_menu_click(float mx, float my) {
         start_level(2);
         return;
     }
-    if (mx >= 0 && mx <= 405.0f && my >= 370.0f && my <= 620.0f) {
+    if (mx >= 0 && mx <= 405.0f && my >= 365.0f && my <= 590.0f) {
         start_level(3);
         return;
     }
-    if (mx >= 435.0f && mx <= 840.0f && my >= 370.0f && my <= 620.0f) {
+    if (mx >= 435.0f && mx <= 840.0f && my >= 365.0f && my <= 590.0f) {
         start_level(4);
         return;
     }
