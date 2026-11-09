@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '-v*'
+      - '!*beta*'
+      - '!*-beta*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SDL 1.2 & SDL_ttf dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl1.2-dev libsdl-ttf2.0-dev cmake ninja-build
+
+      - name: Configure CMake
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build project
+        run: cmake --build build --config Release
+
+      - name: Package Linux Artifact
+        run: |
+          mkdir -p dist/sons-droles-linux
+          cp build/sons-droles dist/sons-droles-linux/
+          cp -r assets dist/sons-droles-linux/
+          cp assets/*.bmp assets/*.ttf dist/sons-droles-linux/ || true
+          cp LICENSE OFL.txt README.md dist/sons-droles-linux/ || true
+          cd dist && tar -czvf ../sons-droles-linux-x86_64.tar.gz sons-droles-linux
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: sons-droles-linux-x86_64.tar.gz
+
+  build-windows:
+    name: Build Windows Package & Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL
+            mingw-w64-x86_64-SDL_ttf
+
+      - name: Configure CMake
+        shell: msys2 {0}
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build project
+        shell: msys2 {0}
+        run: cmake --build build --config Release
+
+      - name: Package Windows Portable Zip
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist/sons-droles-windows
+          cp build/sons-droles.exe dist/sons-droles-windows/
+          cp -r assets dist/sons-droles-windows/
+          cp assets/*.bmp assets/*.ttf dist/sons-droles-windows/ || true
+          cp LICENSE OFL.txt README.md dist/sons-droles-windows/ || true
+          cmake -DEXECUTABLE="$PWD/build/sons-droles.exe" -DDESTINATION="$PWD/dist/sons-droles-windows" -DMINGW_BIN_DIR=/mingw64/bin -P cmake/CopyRuntimeDependencies.cmake
+          cd dist && cmake -E tar cf ../sons-droles-windows-x64.zip --format=zip sons-droles-windows
+
+      - name: Build Inno Setup Installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc 'innosetup/sons_droles.iss'
+
+      - name: Upload Windows Portable Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-zip
+          path: sons-droles-windows-x64.zip
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-installer
+          path: dist/sons-droles-setup-*.exe
+
+  publish-release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Linux Package
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: release-assets
+
+      - name: Download Windows Portable Zip
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-zip
+          path: release-assets
+
+      - name: Download Windows Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-installer
+          path: release-assets
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

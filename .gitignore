@@ -1,0 +1,32 @@
+# Build and distribution directories
+build/
+build_test/
+bin/
+obj/
+dist/
+out/
+cmake-build-*/
+.cache/
+cmake/sdl3/
+
+# Executables and objects
+*.exe
+*.o
+*.obj
+*.res
+
+# IDE files
+.vscode/
+.idea/
+*.user
+*.suo
+*.layout
+*.depend
+*.cbp
+
+Demo/*.bmp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
