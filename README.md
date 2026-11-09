@@ -1,5 +1,15 @@
 # Sons Drôles 🎵
 
+[![Build & Package](https://github.com/FromTheRags/sons-dr-les/actions/workflows/build.yml/badge.svg)](https://github.com/FromTheRags/sons-dr-les/actions/workflows/build.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Language: C++17](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)](https://isocpp.org/)
+[![Library: SDL 1.2](https://img.shields.io/badge/Library-SDL%201.2-green.svg)](https://www.libsdl.org/)
+[![CMake](https://img.shields.io/badge/Build-CMake-064F8C.svg?logo=cmake&logoColor=white)](https://cmake.org/)
+
+> [!NOTE]
+> 🚀 **Vous recherchez une version modernisée sous SDL 3 ?** Consultez la branche [`SDL_3`](https://github.com/FromTheRags/sons-dr-les/tree/SDL_3) !
+> Tandis que cette branche `main` préserve et modernise l'environnement d'origine en **SDL 1.2 & SDL_ttf**, la branche [`SDL_3`](https://github.com/FromTheRags/sons-dr-les/tree/SDL_3) propose un portage natif sous **SDL 3 & SDL3_ttf** avec accélération matérielle GPU, présentation logique avec letterboxing automatique et nouveau moteur audio `SDL_AudioStream`.
+
 Jeu de mémoire et d'acuité auditive en **SDL 1.2** et **SDL_ttf**, développé en C++17, entièrement portable (**Windows** et **Linux**), compatible avec **CLion**, Visual Studio et GCC/Clang.
 
 ---
@@ -76,7 +86,7 @@ Le projet intègre automatiquement dans `cmake/sdl12/` les en-têtes et biblioth
 ├── tools/
 │   └── generate_assets.py      # Générateur autonome de sons et d'images
 ├── CMakeLists.txt              # Configuration CMake moderne
-├── LICENSE                     # Licence MIT du projet
+├── LICENSE                     # Licence GNU GPLv3
 ├── OFL.txt                     # Licence Open Font License
 └── README.md
 ```
@@ -85,6 +95,10 @@ Le projet intègre automatiquement dans `cmake/sdl12/` les en-têtes et biblioth
 
 ## 📜 Licences & Droits d'auteur
 
-- **Code source** : Sous licence **GPL3**.
+- **Code source** : Sous licence [GNU General Public License v3.0 (GPLv3)](LICENSE), Copyright (C) 2013-2026 FromTheRags.
 - **Ressources sonores & graphiques** : 100% libres de droits, créées spécifiquement pour le projet et reproductibles via `tools/generate_assets.py`.
 - **Polices typographiques** : Sous licence **SIL Open Font License 1.1** (Graduate & Patrick Hand par Google Fonts, DejaVu Sans).
+
+---
+
+> 💡 *Pour découvrir la version modernisée utilisant SDL 3, basculez sur la branche [`SDL_3`](https://github.com/FromTheRags/sons-dr-les/tree/SDL_3).*
